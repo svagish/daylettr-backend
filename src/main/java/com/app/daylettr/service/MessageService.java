@@ -94,4 +94,10 @@ public class MessageService {
                         vis.getLastPostedAt().isAfter(LocalDateTime.now().minusHours(6)))
                 .orElse(false); // New users are never on cooldown
     }
+
+    public LocalDateTime getLastPostedAt(UUID visitorId) {
+        return visitorRepository.findById(visitorId)
+                .map(Visitor::getLastPostedAt)
+                .orElseThrow(()->new ResourceNotFoundException("Visitor not found"));
+    }
 }

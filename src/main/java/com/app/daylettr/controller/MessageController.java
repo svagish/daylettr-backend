@@ -13,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -52,7 +53,11 @@ public class MessageController {
     @GetMapping("visitor/status")
     public ResponseEntity<Map<String, Object>> checkStatus(@RequestHeader("X-Visitor-Id") UUID visitorId) {
         boolean onCooldown = messageService.isUserOnCooldown(visitorId);
-        return ResponseEntity.ok(Map.of("onCooldown", onCooldown));
+        LocalDateTime lastPostedAt = messageService.getLastPostedAt(visitorId);
+        return ResponseEntity.ok(Map.of(
+                "onCooldown", onCooldown,
+                "lastPostedAt", lastPostedAt
+        ));
     }
 
 }
