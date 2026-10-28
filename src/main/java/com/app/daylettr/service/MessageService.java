@@ -187,8 +187,12 @@ public class MessageService {
         Long sum = dailyVisitorStatRepository.sumMessagesPostedByVisitorId(visitorId);
         long totalMessagesPosted = sum == null ? 0 : sum;
 
+        // The current streak is only "live" once the visitor has posted today.
+        // Otherwise the stored value would leak a stale/broken streak to the client.
+        int effectiveCurrentStreak = postedToday ? vis.getCurrentStreak() : 0;
+
         return new VisitorStreakResponse(
-                vis.getCurrentStreak(),
+                effectiveCurrentStreak,
                 vis.getLongestStreak(),
                 postedToday,
                 lastPostedDate,
