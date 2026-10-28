@@ -1,11 +1,15 @@
 package com.app.daylettr.service;
 
 import com.app.daylettr.DTO.CreateMessageRequest;
+import com.app.daylettr.DTO.DailyActivityResponse;
+import com.app.daylettr.DTO.VisitorStreakResponse;
 import com.app.daylettr.DTO.YesterdayMessagesResponse;
+import com.app.daylettr.entity.DailyVisitorStat;
 import com.app.daylettr.entity.Message;
 import com.app.daylettr.entity.Visitor;
 import com.app.daylettr.exception.DailyLimitExceededException;
 import com.app.daylettr.exception.ResourceNotFoundException;
+import com.app.daylettr.repository.DailyVisitorStatRepository;
 import com.app.daylettr.repository.MessageRepository;
 import com.app.daylettr.repository.VisitorRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,7 +19,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -24,6 +30,8 @@ public class MessageService {
     private MessageRepository messageRepository;
     @Autowired
     private VisitorRepository visitorRepository;
+    @Autowired
+    private DailyVisitorStatRepository dailyVisitorStatRepository;
 
     @Transactional
     public Message createMessage(UUID visitorId, CreateMessageRequest createMessageRequest) {
@@ -46,10 +54,12 @@ public class MessageService {
         }
 
         Message msg = new Message();
+        msg.setVisitorId(visitorId);
         msg.setContent(createMessageRequest.getContent());
 
         // the 6-hour cooldown starts from the moment they FINISHED typing.
         vis.setLastPostedAt(LocalDateTime.now());
+        recordDay(vis);
         visitorRepository.save(vis);
 
         return messageRepository.save(msg);
@@ -99,5 +109,91 @@ public class MessageService {
         return visitorRepository.findById(visitorId)
                 .map(Visitor::getLastPostedAt)
                 .orElseThrow(()->new ResourceNotFoundException("Visitor not found"));
+    }
+
+    /**
+     * Updates today's DailyVisitorStat (post count + last post time) and the
+     * streak counters on the Visitor. Called inside createMessage's transaction,
+     * so the visitor save below persists both in one round trip.
+     */
+    private void recordDay(Visitor vis) {
+        LocalDate today = LocalDate.now();
+
+        DailyVisitorStat stat = dailyVisitorStatRepository.findByVisitorIdAndStatDate(vis.getId(), today)
+                .orElseGet(() -> {
+                    DailyVisitorStat s = new DailyVisitorStat();
+                    s.setVisitorId(vis.getId());
+                    s.setStatDate(today);
+                    return s;
+                });
+        stat.setMessagesPosted(stat.getMessagesPosted() + 1);
+        stat.setLastPostedAt(LocalDateTime.now());
+        dailyVisitorStatRepository.save(stat);
+
+        // streak rules: already-counted-today is a no-op, yesterday continues, anything else resets
+        LocalDate last = vis.getLastStreakDate();
+        if (last == null) {
+            vis.setCurrentStreak(1);
+        } else if (last.equals(today)) {
+            // already counted today — do not bump again
+        } else if (last.equals(today.minusDays(1))) {
+            vis.setCurrentStreak(vis.getCurrentStreak() + 1);
+        } else {
+            vis.setCurrentStreak(1);
+        }
+        if (vis.getCurrentStreak() > vis.getLongestStreak()) {
+            vis.setLongestStreak(vis.getCurrentStreak());
+        }
+        vis.setLastStreakDate(today);
+    }
+
+    @Transactional(readOnly = true)
+    public VisitorStreakResponse getStreak(UUID visitorId) {
+        Visitor vis = visitorRepository.findById(visitorId).orElse(null);
+        if (vis == null) {
+            return VisitorStreakResponse.ofNewVisitor(LocalDate.now());
+        }
+
+        LocalDate today = LocalDate.now();
+
+        List<DailyVisitorStat> window = dailyVisitorStatRepository
+                .findByVisitorIdAndStatDateBetweenOrderByStatDateAsc(visitorId, today.minusDays(6), today);
+        Map<LocalDate, DailyVisitorStat> byDate = new java.util.HashMap<>();
+        for (DailyVisitorStat s : window) {
+            byDate.put(s.getStatDate(), s);
+        }
+
+        List<DailyActivityResponse> recentDays = new ArrayList<>();
+        for (int i = 6; i >= 0; i--) {
+            LocalDate d = today.minusDays(i);
+            DailyVisitorStat s = byDate.get(d);
+            recentDays.add(new DailyActivityResponse(d, s != null, s == null ? 0 : s.getMessagesPosted()));
+        }
+
+        boolean postedToday = byDate.containsKey(today);
+        LocalDate lastPostedDate = null;
+        for (int i = 0; i < 7; i++) {
+            if (byDate.containsKey(today.minusDays(i))) {
+                lastPostedDate = today.minusDays(i);
+                break;
+            }
+        }
+        // fall back to the visitor's own record if the last post is older than 7 days
+        if (lastPostedDate == null && vis.getLastPostedAt() != null) {
+            lastPostedDate = vis.getLastPostedAt().toLocalDate();
+        }
+
+        long totalDaysPosted = dailyVisitorStatRepository.countByVisitorId(visitorId);
+        Long sum = dailyVisitorStatRepository.sumMessagesPostedByVisitorId(visitorId);
+        long totalMessagesPosted = sum == null ? 0 : sum;
+
+        return new VisitorStreakResponse(
+                vis.getCurrentStreak(),
+                vis.getLongestStreak(),
+                postedToday,
+                lastPostedDate,
+                totalDaysPosted,
+                totalMessagesPosted,
+                recentDays);
     }
 }

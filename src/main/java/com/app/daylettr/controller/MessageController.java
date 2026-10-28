@@ -1,6 +1,7 @@
 package com.app.daylettr.controller;
 
 import com.app.daylettr.DTO.CreateMessageRequest;
+import com.app.daylettr.DTO.VisitorStreakResponse;
 import com.app.daylettr.DTO.YesterdayMessagesResponse;
 import com.app.daylettr.entity.Message;
 import com.app.daylettr.repository.MessageRepository;
@@ -49,7 +50,11 @@ public class MessageController {
                 .body(yesterdayMessagesResponse);
     }
 
-    // In MessageController.java
+    @GetMapping("visitor/streak")
+    public ResponseEntity<VisitorStreakResponse> getStreak(@RequestHeader("X-Visitor-Id") UUID visitorId) {
+        return ResponseEntity.ok(messageService.getStreak(visitorId));
+    }
+
     @GetMapping("visitor/status")
     public ResponseEntity<Map<String, Object>> checkStatus(@RequestHeader("X-Visitor-Id") UUID visitorId) {
         boolean onCooldown = messageService.isUserOnCooldown(visitorId);

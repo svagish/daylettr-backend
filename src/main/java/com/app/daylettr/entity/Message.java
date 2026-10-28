@@ -18,6 +18,9 @@ public class Message {
     @Id
     private UUID id;
 
+    @Column(name = "visitor_id")
+    private UUID visitorId;
+
     @Column(name = "content")
     private String content;
 
