@@ -96,6 +96,21 @@ public class MessageService {
         return new YesterdayMessagesResponse(yesterdayMessagesList.size(), yesterdayMessagesList);
     }
 
+    /**
+     * Total words shared by the community since the start of the current
+     * (server) day. Content is read server-side for counting only and is
+     * never returned to clients.
+     */
+    @Transactional(readOnly = true)
+    public long getWordsSharedToday() {
+        List<String> contents = messageRepository
+                .findTodayContents(LocalDate.now().atStartOfDay());
+        return contents.stream()
+                .filter(c -> c != null && !c.isBlank())
+                .mapToLong(c -> c.trim().split("\\s+").length)
+                .sum();
+    }
+
     // cooldown if posted in last 6 hours
     @Transactional
     public boolean isUserOnCooldown(UUID visitorId) {

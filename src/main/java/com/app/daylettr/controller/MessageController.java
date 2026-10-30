@@ -2,9 +2,9 @@ package com.app.daylettr.controller;
 
 import com.app.daylettr.DTO.CreateMessageRequest;
 import com.app.daylettr.DTO.VisitorStreakResponse;
+import com.app.daylettr.DTO.WordsTodayResponse;
 import com.app.daylettr.DTO.YesterdayMessagesResponse;
 import com.app.daylettr.entity.Message;
-import com.app.daylettr.repository.MessageRepository;
 import com.app.daylettr.service.MessageService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -16,7 +16,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 @Validated
 @RestController
@@ -53,6 +52,14 @@ public class MessageController {
     @GetMapping("visitor/streak")
     public ResponseEntity<VisitorStreakResponse> getStreak(@RequestHeader("X-Visitor-Id") UUID visitorId) {
         return ResponseEntity.ok(messageService.getStreak(visitorId));
+    }
+
+    // Community-wide word count for today; public, like /message/yesterday.
+    // Frontend re-fetches after POST /message so the count includes the user's own words.
+    @GetMapping("/message/words-today")
+    public ResponseEntity<WordsTodayResponse> getWordsToday() {
+        return ResponseEntity.ok(new WordsTodayResponse(
+                messageService.getWordsSharedToday()));
     }
 
     @GetMapping("visitor/status")
